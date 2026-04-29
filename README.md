@@ -133,7 +133,9 @@ AstrBot Core
 ---
 
 ## 独立 WebUI
-
+<p align="center">
+  <img src="<img width="3486" height="1700" alt="Image" src="https://github.com/user-attachments/assets/6ceba6f9-aae7-425c-abaa-e471bcb9837c" />" width="100%" />
+</p>
 启用后会在本地启动一个独立 WebUI，默认监听 `127.0.0.1`，默认端口 `5751`。
 
 ### 页面能力
