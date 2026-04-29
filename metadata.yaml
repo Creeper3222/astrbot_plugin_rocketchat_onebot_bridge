@@ -1,0 +1,9 @@
+name: astrbot_plugin_rocketchat_onebot_bridge
+display_name: RocketCat
+desc: 将 Rocket.Chat 通过内嵌 OneBot v11 bridge 的类napcat方式接入 AstrBot。
+version: v0.1.0
+author: Creeper3222
+repo: https://github.com/Creeper3222/astrbot_plugin_rocketchat_onebot_bridge
+astrbot_version: ">=3.4"
+support_platforms:
+  - aiocqhttp

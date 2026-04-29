@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RocketCat Shell</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260428d" />
+  </head>
+  <body>
+    <div class="shell-layout">
+      <aside class="sidebar">
+        <div class="brand-mark">
+          <span class="brand-accent"></span>
+          <div>
+            <p class="brand-title">RocketCat</p>
+            <p class="brand-subtitle">Shell Preview</p>
+          </div>
+        </div>
+
+        <nav class="nav-section">
+          <button class="nav-item active" type="button" data-page="network">
+            <span class="nav-icon">≋</span>
+            <span>网络配置</span>
+          </button>
+          <button class="nav-item" type="button" data-page="basic">
+            <span class="nav-icon">⌁</span>
+            <span>基础信息</span>
+          </button>
+          <button class="nav-item" type="button" data-page="logs">
+            <span class="nav-icon">▤</span>
+            <span>猫猫日志</span>
+          </button>
+          <button class="nav-item ghost" type="button" disabled>
+            <span class="nav-icon">◌</span>
+            <span>插件管理</span>
+          </button>
+        </nav>
+      </aside>
+
+      <main class="page-shell">
+        <section id="networkPage" class="page-view">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">RocketCat Shell</p>
+              <h1>网络配置</h1>
+            </div>
+            <div class="header-actions">
+              <button id="refreshButton" class="action-button subtle" type="button">刷新</button>
+              <button id="createButton" class="action-button primary" type="button">新建 Websocket客户端</button>
+            </div>
+          </header>
+
+          <section id="statusBanner" class="banner hidden"></section>
+
+          <section class="status-grid">
+            <article class="status-card">
+              <p class="status-label">桥接总开关</p>
+              <p id="bridgeStatus" class="status-value">-</p>
+            </article>
+            <article class="status-card">
+              <p class="status-label">主bot状态</p>
+              <p id="mainBotStatus" class="status-value">-</p>
+            </article>
+            <article class="status-card wide">
+              <p class="status-label">独立 WebUI</p>
+              <p id="webuiStatus" class="status-value">-</p>
+              <p id="webuiUrl" class="status-detail">-</p>
+            </article>
+          </section>
+
+          <section class="panel-shell">
+            <div class="tab-row">
+              <button class="tab-pill">全部</button>
+              <button class="tab-pill active">Websocket客户端</button>
+            </div>
+
+            <div id="emptyState" class="empty-state hidden">
+              <p>当前还没有副bot。点击右上角“新建 Websocket客户端”开始添加。</p>
+            </div>
+
+            <div id="botGrid" class="bot-grid"></div>
+          </section>
+        </section>
+
+        <section id="basicPage" class="page-view hidden">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">RocketCat Shell</p>
+              <h1>基础信息</h1>
+            </div>
+            <div class="header-actions">
+              <button id="basicRefreshButton" class="action-button subtle" type="button">刷新</button>
+            </div>
+          </header>
+
+          <section class="status-grid basic-summary-grid">
+            <article class="status-card">
+              <p class="status-label">已启用 Bot</p>
+              <p id="basicEnabledCount" class="status-value">0</p>
+            </article>
+            <article class="status-card">
+              <p class="status-label">已连接</p>
+              <p id="basicOnlineCount" class="status-value">0</p>
+            </article>
+            <article class="status-card wide">
+              <p class="status-label">显示规则</p>
+              <p class="status-value basic-rule-value">仅显示已启用 bot</p>
+              <p class="status-detail">主bot 固定显示为“主bot”，副bot 显示你在网络配置里设置的客户端名称。</p>
+            </article>
+          </section>
+
+          <section class="panel-shell basic-panel-shell">
+            <div id="basicEmptyState" class="empty-state hidden">
+              <p>当前没有已启用的 bot，因此这里不会显示任何客户端信息。</p>
+            </div>
+            <div id="basicInfoGrid" class="basic-info-grid"></div>
+          </section>
+        </section>
+
+        <section id="logsPage" class="page-view hidden">
+          <header class="page-header">
+            <div>
+              <p class="eyebrow">RocketCat Shell</p>
+              <h1>猫猫日志</h1>
+            </div>
+            <div class="header-actions">
+              <span class="inline-note">仅捕获桥接器自身日志，最大缓存 5000 条，关闭 WebUI 自动清空。</span>
+            </div>
+          </header>
+
+          <section class="panel-shell log-panel-shell">
+            <div class="log-toolbar">
+              <div class="log-filter-group">
+                <button class="log-filter active" type="button" data-log-level="DEBUG">Debug</button>
+                <button class="log-filter active" type="button" data-log-level="INFO">Info</button>
+                <button class="log-filter active" type="button" data-log-level="WARN">Warn</button>
+                <button class="log-filter active" type="button" data-log-level="ERROR">Error</button>
+              </div>
+              <div class="log-toolbar-actions">
+                <label class="field-switch compact-switch log-auto-scroll-switch">
+                  <span id="logAutoScrollLabel">自动滚动已开启</span>
+                  <input id="logAutoScrollToggle" type="checkbox" checked />
+                  <i></i>
+                </label>
+                <div id="logMeta" class="log-meta">实时日志</div>
+                <button id="clearLogsButton" class="action-button log-clear-button" type="button">一键清空日志</button>
+              </div>
+            </div>
+
+            <div id="logConsole" class="log-console" aria-live="polite"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <div id="botModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Websocket客户端</p>
+            <h2 id="modalTitle">新建副bot</h2>
+          </div>
+          <button id="closeModalButton" class="icon-button" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <form id="botForm" class="form-layout">
+          <section class="form-section">
+            <h3>基础信息</h3>
+            <div class="field-grid two-columns">
+              <label class="field-block">
+                <span>副bot名称</span>
+                <input name="name" type="text" placeholder="sub_bot" required />
+              </label>
+              <label class="field-switch large-switch">
+                <span>启用该副bot</span>
+                <input name="enabled" type="checkbox" />
+                <i></i>
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>Rocket.Chat</h3>
+            <div class="field-grid two-columns">
+              <label class="field-block span-two">
+                <span>Rocket.Chat 服务器地址</span>
+                <input name="server_url" type="url" placeholder="https://home-nas.example.com:41001/" />
+              </label>
+              <label class="field-block">
+                <span>Rocket.Chat 用户名</span>
+                <input name="username" type="text" autocomplete="off" />
+              </label>
+              <label class="field-block">
+                <span>Rocket.Chat 密码</span>
+                <input name="password" type="password" autocomplete="new-password" />
+              </label>
+              <label class="field-block span-two">
+                <span>E2EE 密钥密码</span>
+                <input name="e2ee_password" type="password" autocomplete="new-password" />
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>OneBot 反向 WS</h3>
+            <div class="field-grid two-columns">
+              <label class="field-block span-two">
+                <span>AstrBot OneBot reverse WS 地址</span>
+                <input name="onebot_ws_url" type="text" placeholder="ws://127.0.0.1:6200/ws/" />
+              </label>
+              <label class="field-block">
+                <span>OneBot Access Token</span>
+                <input name="onebot_access_token" type="text" autocomplete="off" />
+              </label>
+              <label class="field-block">
+                <span>OneBot self_id</span>
+                <input name="onebot_self_id" type="number" min="1" step="1" />
+              </label>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>高级设置</h3>
+            <div class="field-grid two-columns compact-grid">
+              <label class="field-block">
+                <span>重连延迟(秒)</span>
+                <input name="reconnect_delay" type="number" min="0" step="0.1" />
+              </label>
+              <label class="field-block">
+                <span>最大连续重连次数</span>
+                <input name="max_reconnect_attempts" type="number" min="0" step="1" />
+              </label>
+              <label class="field-block">
+                <span>远程媒体大小上限(字节)</span>
+                <input name="remote_media_max_size" type="number" min="0" step="1" />
+              </label>
+              <div class="switch-group">
+                <label class="field-switch">
+                  <span>子频道会话隔离</span>
+                  <input name="enable_subchannel_session_isolation" type="checkbox" />
+                  <i></i>
+                </label>
+                <label class="field-switch">
+                  <span>忽略机器人自己的消息</span>
+                  <input name="skip_own_messages" type="checkbox" />
+                  <i></i>
+                </label>
+                <label class="field-switch">
+                  <span>调试日志</span>
+                  <input name="debug" type="checkbox" />
+                  <i></i>
+                </label>
+              </div>
+            </div>
+          </section>
+        </form>
+
+        <div class="modal-footer">
+          <button id="cancelButton" class="action-button subtle" type="button">取消</button>
+          <button id="submitButton" class="action-button primary" type="button">保存副bot</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/static/app.js?v=20260428d"></script>
+  </body>
+  </html>

@@ -1,0 +1,122 @@
+{
+  "enabled": {
+    "description": "启用桥接总开关",
+    "type": "bool",
+    "hint": "关闭此项则禁用所有bot连接 Rocket.Chat 或 AstrBot OneBot reverse WebSocket。",
+    "default": false
+  },
+  "main_bot_enabled": {
+    "description": "主bot启用",
+    "type": "bool",
+    "hint": "关闭后仅禁用设置页中这一个主bot；若要接入多bot，请先开启独立WebUI。",
+    "default": false
+  },
+  "enable_independent_webui": {
+    "description": "启用独立WebUI",
+    "type": "bool",
+    "hint": "只有开启独立WebUI才可以接入多bot。开启后可通过下方端口访问独立管理界面。",
+    "default": false
+  },
+  "webui_access_password": {
+    "description": "webui访问密码",
+    "type": "string",
+    "hint": "设置管理webui的访问密码，留空则不启用密码访问。",
+    "default": ""
+  },
+  "independent_webui_port": {
+    "description": "独立WebUI端口",
+    "type": "int",
+    "hint": "独立RocketCat Shell管理界面的监听端口，默认 5751。",
+    "default": 5751
+  },
+  "server_url": {
+    "description": "主bot Rocket.Chat 服务器地址",
+    "type": "string",
+    "hint": "主bot 用于连接 Rocket.Chat 的服务器地址，包含 http:// 或 https://，不要带末尾斜杠。",
+    "default": "http://127.0.0.1:3000"
+  },
+  "username": {
+    "description": "主bot Rocket.Chat 用户名",
+    "type": "string",
+    "hint": "用于登录 Rocket.Chat 的主bot 机器人用户名。",
+    "default": ""
+  },
+  "password": {
+    "description": "主bot Rocket.Chat 密码",
+    "type": "string",
+    "hint": "用于登录 Rocket.Chat 的主bot 机器人密码。",
+    "default": ""
+  },
+  "e2ee_password": {
+    "description": "主bot E2EE 密钥密码",
+    "type": "string",
+    "hint": "主bot 的 Rocket.Chat E2EE 私钥密码。留空则不启用 E2EE。",
+    "default": ""
+  },
+  "onebot_ws_url": {
+    "description": "主bot AstrBot OneBot reverse WS 地址",
+    "type": "string",
+    "hint": "主bot 通常是 ws://127.0.0.1:6199/ws/ 。插件会作为 OneBot 客户端主动连接它。",
+    "default": "ws://127.0.0.1:6199/ws/"
+  },
+  "onebot_access_token": {
+    "description": "主bot OneBot Access Token",
+    "type": "string",
+    "hint": "主bot 与 AstrBot aiocqhttp 平台的 ws_reverse_token 保持一致。",
+    "default": ""
+  },
+  "onebot_self_id": {
+    "description": "主bot OneBot self_id",
+    "type": "int",
+    "hint": "主bot 在 OneBot 侧暴露的数字 self_id。",
+    "default": 910001
+  },
+  "reconnect_delay": {
+    "description": "重连延迟(秒)",
+    "type": "float",
+    "hint": "Rocket.Chat 或 OneBot 连接断开后的重连等待时间。",
+    "default": 5.0
+  },
+  "max_reconnect_attempts": {
+    "description": "最大连续重连次数",
+    "type": "int",
+    "hint": "0 表示不限制；大于 0 时，主bot 连续重连失败达到该次数后会自动关闭\"主bot启用\"，停止后续重连。",
+    "default": 10
+  },
+  "enable_subchannel_session_isolation": {
+    "description": "启用子频道会话隔离",
+    "type": "bool",
+    "hint": "开启该项则不同子频道间上下文不共享",
+    "default": true
+  },
+  "remote_media_max_size": {
+    "description": "远程媒体大小上限(字节)",
+    "type": "int",
+    "hint": "下载远端媒体时允许的最大字节数。v1 文本闭环暂不严格依赖此项。",
+    "default": 20971520
+  },
+  "skip_own_messages": {
+    "description": "忽略机器人自己的消息",
+    "type": "bool",
+    "hint": "开启后会跳过 Rocket.Chat 中由当前机器人账号发送的消息，避免回环。",
+    "default": true
+  },
+  "debug": {
+    "description": "调试日志",
+    "type": "bool",
+    "hint": "开启后输出更详细的桥接日志。",
+    "default": false
+  },
+  "llm_thinking_reaction": {
+    "description": "LLM思考时贴表情ID",
+    "type": "string",
+    "hint": "Rocket.Chat 侧在 LLM 处理中贴上的表情短码，默认 :heart: 。需要启用I am thinking插件。",
+    "default": ":heart:"
+  },
+  "llm_done_reaction": {
+    "description": "LLM应答完成时贴表情ID",
+    "type": "string",
+    "hint": "Rocket.Chat 侧在 LLM 应答完成后贴上的表情短码，默认 :sunny: 。需要启用I am thinking插件。",
+    "default": ":sunny:"
+  }
+}

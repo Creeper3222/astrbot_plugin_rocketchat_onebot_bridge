@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RocketCat Shell 登录</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260428d" />
+  </head>
+  <body>
+    <section class="auth-shell">
+      <div class="auth-glow auth-glow-left"></div>
+      <div class="auth-glow auth-glow-right"></div>
+
+      <div class="auth-card">
+        <div class="auth-brand-mark">
+          <span class="brand-accent"></span>
+          <div>
+            <p class="auth-eyebrow">RocketCat Shell</p>
+            <h1 class="auth-title">独立 WebUI 登录</h1>
+          </div>
+        </div>
+        <p class="auth-subtitle">请输入你在桥接器设置页配置的 WebUI 访问密码。</p>
+
+        <form id="authLoginForm" class="auth-form" autocomplete="off">
+          <label for="authPasswordInput" class="auth-label">WebUI 访问密码</label>
+          <input
+            id="authPasswordInput"
+            class="auth-password-input"
+            type="password"
+            name="password"
+            placeholder="请输入访问密码"
+            autocomplete="current-password"
+            required
+          />
+          <p id="authLoginError" class="auth-error" role="alert"></p>
+          <button id="authSubmitButton" class="action-button primary auth-submit" type="submit">进入管理界面</button>
+        </form>
+      </div>
+    </section>
+
+    <script>
+      (() => {
+        const form = document.getElementById('authLoginForm');
+        const passwordInput = document.getElementById('authPasswordInput');
+        const errorBox = document.getElementById('authLoginError');
+        const submitButton = document.getElementById('authSubmitButton');
+
+        form?.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const password = String(passwordInput?.value || '').trim();
+          errorBox.textContent = '';
+
+          if (!password) {
+            errorBox.textContent = '请输入访问密码';
+            return;
+          }
+
+          submitButton.disabled = true;
+          submitButton.textContent = '登录中...';
+
+          try {
+            const response = await fetch('/api/login', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password }),
+              credentials: 'same-origin',
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              throw new Error(payload.detail || '登录失败，请稍后再试');
+            }
+            window.location.replace('/');
+          } catch (error) {
+            errorBox.textContent = error.message || '登录失败，请稍后再试';
+          } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = '进入管理界面';
+          }
+        });
+      })();
+    </script>
+  </body>
+  </html>

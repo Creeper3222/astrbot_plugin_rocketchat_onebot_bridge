@@ -1,0 +1,4 @@
+aiohttp>=3.9,<4
+cryptography>=44.0.3
+fastapi>=0.110,<1
+uvicorn>=0.23,<1
