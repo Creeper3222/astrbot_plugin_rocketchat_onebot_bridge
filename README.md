@@ -143,6 +143,7 @@ AstrBot Core
 - `网络配置`：查看主 bot 状态、创建/编辑/删除副 bot。
 - `基础信息`：查看每个 bot 的账号信息、OneBot self ID、Rocket.Chat 服务器品牌头像和服务器名称。
 - `猫猫日志`：查看RocketCat运行日志，并支持清空日志。
+- `插件管理`：目前仅作为对齐napcat的预留，近期内并不打算实装。
 
 ### WebUI 认证
 
