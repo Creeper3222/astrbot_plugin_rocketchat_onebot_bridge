@@ -275,6 +275,9 @@ http://127.0.0.1:5751/
 ```
 
 在 WebUI 中创建副 bot，每个副 bot 都需要配置独立的：
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/cdf9e54d-82d3-4da5-ad70-93e2bd0d4872" width="100%" />
+</p>
 
 | 设置项 | 初始值 | 作用 |
 |--------|--------|------|
