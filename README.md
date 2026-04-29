@@ -275,6 +275,9 @@ http://127.0.0.1:5751/
 ```
 
 在 WebUI 中创建副 bot，每个副 bot 都需要配置独立的：
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/4185c1ff-c20e-4585-8aa8-11764d86fd0d" width="100%" />
+</p>
 
 | 设置项 | 初始值 | 作用 |
 |--------|--------|------|
@@ -295,6 +298,9 @@ http://127.0.0.1:5751/
 | `调试日志` | `关闭` | 控制这只副 bot 是否输出更详细的调试日志。 |
 
 “猫猫日志”页的 `自动滚动已开启` 也是默认开启的，适合在调试连接阶段持续盯住最新日志输出。
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/98cbf56f-d5f0-4fb1-b42c-d0ad627e1884" width="100%" />
+</p>
 
 注意：所有 bot 的 `onebot_self_id` 必须唯一，桥接器会自动校验冲突。
 
