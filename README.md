@@ -57,6 +57,19 @@ AstrBot Core
 - 支持 Rocket.Chat 官方 E2EE 私聊/私有群组文本与媒体收发。
 - 支持 `astrbot_plugin_iamthinking` 的数字表情反应映射，可配置思考中/完成后的 Rocket.Chat reaction shortcode。
 - 使用 `plugin_data` 持久化保存消息映射、上下文房间映射、副 bot 配置和运行状态。
+- 入站标准消息语义已对齐 RocketCatShell v0.1.1 的关键修正，OneBot 标准 `message` / `raw_message` 尽量只保留当前用户输入正文。
+- Rocket.Chat 的房间、发送者、引用链和解释性上下文拆分进 `rocketchat_*` 附加字段，而不是硬拼进首段标准文本。
+- 消息 surrogate `message_id` 使用固定 1000 条活动窗口治理，窗口裁剪或 compact 时会同步重建消息缓存，避免索引与注册表失配。
+
+---
+
+## 当前版本行为要点
+
+- 插件版当前入站行为已经按 RocketCatShell v0.1.1 的核心逻辑完成同步，重点修正了“房间/发送者信息硬拼进首段文本”这一层旧设计。
+- 标准 OneBot `message` / `raw_message` 现在优先表达当前这条消息本身的正文；引用链、reply source、房间标签、发送者标签等解释性信息通过 `rocketchat_*` 字段附加。
+- Rocket.Chat 原生 `source_id` 仍然是长期稳定身份；OneBot 侧的数字 `message_id` 只是本地窗口内工作的 surrogate id，不承诺永久稳定。
+- 插件版固定将消息双向索引窗口收口到 1000 条，不提供单独的用户配置项。
+- 本插件没有引入 RocketCatShell 的本地插件系统，也没有实现 Shell 版“基础设置”模块；这里只同步桥接正确性相关的行为逻辑。
 
 ---
 
@@ -88,11 +101,12 @@ AstrBot Core
 
 ### 入站能力
 
-- Rocket.Chat 文本消息会被转换为 OneBot `message` 事件。
+- Rocket.Chat 文本消息会被转换为 OneBot `message` 事件，标准 `message` / `raw_message` 会尽量保持为当前输入正文。
 - 私聊会映射为 OneBot `private` 消息。
 - 频道和私有群组会映射为 OneBot `group` 消息。
 - Rocket.Chat `mentions` 会转换为 OneBot `at` 段。
-- Rocket.Chat 引用、消息链接、线程回复会转换为 OneBot `reply` 语义，并补充引用上下文文本。
+- Rocket.Chat 引用、消息链接、线程回复会转换为 OneBot `reply` 语义；引用链与解释性上下文通过 `rocketchat_quote_contexts`、`rocketchat_quote_context_text`、`rocketchat_reply_source_id` 等字段附加，而不是回写到首段标准正文。
+- Rocket.Chat 的房间、发送者、当前消息解释行等认知信息可从 `rocketchat_room_*`、`rocketchat_sender_*`、`rocketchat_current_message_*` 字段中读取。
 - 图片、普通文件、音频、视频附件会被识别并转换成对应的 OneBot 媒体段。
 - 不支持直接桥接的媒体会降级为可读文本占位，避免整条消息消失。
 
@@ -108,6 +122,8 @@ AstrBot Core
 ### 上下文与映射
 
 - Rocket.Chat 的房间 ID、用户 ID、消息 ID 会被桥接器映射为可持久化的 OneBot 数字 surrogate ID。
+- 其中消息 surrogate `message_id` 采用固定 1000 条活动窗口治理；旧消息超出窗口后会被裁剪，达到重排阈值时会 compact 回较小编号区间。
+- `id_map.json` 与 `message_registry.json` 会在消息窗口变化时同步重建，reply 段里引用到的 surrogate id 也会随之改写，避免索引和缓存各走各的。
 - 群聊上下文使用 `context_room_registry.json` 维持群上下文到真实房间的绑定关系。
 - 私聊上下文使用 `PrivateRoomStore` 维护用户与私聊房间的绑定关系。
 - 可选开启“子频道会话隔离”，把不同子房间拆成不同会话上下文。
@@ -166,8 +182,14 @@ AstrBot Core
 |------|------|
 | AstrBot | `>= 3.4` |
 | 支持平台声明 | `aiocqhttp` |
-| 运行依赖 | `aiohttp`, `cryptography`, `fastapi`, `uvicorn` |
+| 插件额外运行依赖 | `aiohttp`, `cryptography`, `fastapi`, `uvicorn` |
 | Rocket.Chat | 需要可用的 REST API、DDP/WebSocket 和 E2EE 接口（如使用加密功能） |
+
+说明：
+
+- 插件目录内的 `requirements.txt` 当前只包含桥接器自身需要的 4 个第三方依赖：`aiohttp`、`cryptography`、`fastapi`、`uvicorn`。
+- 本轮入站语义与消息索引窗口同步没有新增任何新的第三方依赖。
+- AstrBot 本体依赖仍由 AstrBot 根目录的 `requirements.txt` / `pyproject.toml` 管理，插件 `requirements.txt` 只覆盖插件自己的额外依赖面。
 
 ---
 
@@ -186,6 +208,12 @@ git clone https://github.com/Creeper3222/astrbot_plugin_rocketchat_onebot_bridge
 
 ```bash
 pip install -r data/plugins/astrbot_plugin_rocketchat_onebot_bridge/requirements.txt
+```
+
+如果你的 AstrBot 环境是通过 `uv` 管理的，也可以使用：
+
+```bash
+uv pip install -r data/plugins/astrbot_plugin_rocketchat_onebot_bridge/requirements.txt
 ```
 
 ### 方式二：通过 AstrBot WebUI 安装
@@ -379,8 +407,8 @@ data/plugin_data/astrbot_plugin_rocketchat_onebot_bridge/
 
 其中典型文件包括：
 
-- `id_map.json`：Rocket.Chat ID 和 OneBot surrogate ID 映射
-- `message_registry.json`：消息记录和消息来源映射
+- `id_map.json`：Rocket.Chat ID 和 OneBot surrogate ID 映射，其中消息 namespace 固定只保留最多 1000 条活动窗口
+- `message_registry.json`：消息记录和消息来源映射；会随着消息窗口裁剪 / compact 同步重建
 - `context_room_registry.json`：群上下文到真实 Rocket.Chat 房间的绑定
 - `runtime_state.json`：运行态持久化信息
 - `sub_bots.json`：副 bot 配置清单
@@ -393,11 +421,14 @@ data/plugin_data/astrbot_plugin_rocketchat_onebot_bridge/
 ## 已知限制
 
 - 当前不是一个独立 Rocket.Chat 平台适配器，而是依赖 AstrBot 自带 `aiocqhttp` 的桥接器。
+- 当前不会实现 RocketCatShell 的本地插件系统，也不会实现 Shell 版“基础设置”模块。
 - 合并转发消息当前未实现。
 - 系统事件、审计事件、编辑/撤回/已读等非消息类事件不在这一版的桥接承诺范围内。
 - E2EE 仅覆盖 Rocket.Chat 加密私聊和加密私有群组。
 - 远端媒体如果下载失败、超出大小限制或源地址不可用，相关媒体发送会失败或降级。
 - 副 bot 依赖独立 WebUI 开关，关闭 WebUI 时不会启动副 bot。
+- 消息 surrogate `message_id` 是固定 1000 条窗口内的本地工作编号，不是永久稳定 id。
+- “最大双向索引保存条数”目前固定为 1000，不提供单独的用户配置入口。
 
 ---
 

@@ -71,9 +71,11 @@ class InboundTranslator:
             )
 
         reply_source_id, cleaned_text = self._extract_reply_source_id(raw_msg)
-        mention_segments, cleaned_text = await self._build_mention_segments(raw_msg, cleaned_text)
+        current_input_text = cleaned_text.strip()
+        message_segments, cleaned_text = await self._build_mention_segments(raw_msg, cleaned_text)
         quote_contexts = await self._build_quote_contexts(raw_msg, max_depth=self._MAX_QUOTE_DEPTH)
         mention_display_names = self._extract_mention_display_names(raw_msg)
+        mention_metadata = await self._extract_mention_metadata(raw_msg)
         media_segments = await self._rocketchat.media.extract_onebot_segments(raw_msg)
         quote_media_segments = self._build_quote_media_segments(
             quote_contexts,
@@ -86,7 +88,7 @@ class InboundTranslator:
         if reply_source_id:
             reply_mapping = await self._id_map.get_or_create("message", reply_source_id)
             segments.append({"type": "reply", "data": {"id": str(reply_mapping.surrogate_id)}})
-        segments.extend(mention_segments)
+        segments.extend(message_segments)
 
         message_text = cleaned_text.strip()
         current_message_line = self._format_current_message_line(
@@ -96,17 +98,6 @@ class InboundTranslator:
             mention_names=mention_display_names,
             media=current_media,
         )
-        current_message_block = self._format_current_message_block(
-            message_text,
-            current_message_line=current_message_line,
-            has_quote_context=bool(quote_contexts),
-            has_media=bool(media_segments),
-        )
-        if current_message_block:
-            segments.append({"type": "text", "data": {"text": current_message_block}})
-
-        if quote_context_block:
-            segments.append({"type": "text", "data": {"text": "\n" + quote_context_block}})
 
         segments.extend(quote_media_segments)
         segments.extend(media_segments)
@@ -116,16 +107,16 @@ class InboundTranslator:
             if media_placeholder:
                 segments.append({"type": "text", "data": {"text": media_placeholder}})
                 message_text = media_placeholder
+                current_input_text = media_placeholder
 
         if not segments:
             return None
 
         timestamp = self._extract_timestamp(raw_msg)
+        direct_reply_context = quote_contexts[0] if quote_contexts else {}
         combined_raw_message = self._compose_raw_message(
-            quote_context_block,
-            current_message_block,
-            current_message_line=current_message_line,
-            fallback=raw_msg.get("msg") or message_text,
+            current_message_text=current_input_text,
+            fallback=message_text,
         )
         event = {
             "time": timestamp,
@@ -144,11 +135,20 @@ class InboundTranslator:
                 "card": sender_name,
             },
             "message_format": "array",
+            "rocketchat_sender_name": sender_name,
+            "rocketchat_sender_username": str(sender.get("username") or ""),
+            "rocketchat_sender_source_id": sender_source_id,
+            "rocketchat_sender_surrogate_id": sender_mapping.surrogate_id,
+            "rocketchat_mentions": mention_metadata,
             "rocketchat_quote_contexts": quote_contexts,
+            "rocketchat_quote_context_text": quote_context_block,
+            "rocketchat_current_message_input_text": current_input_text,
             "rocketchat_quote_media_segments": quote_media_segments,
             "rocketchat_current_message_text": message_text,
             "rocketchat_current_message_line": current_message_line,
             "rocketchat_reply_source_id": reply_source_id,
+            "rocketchat_reply_sender_name": str(direct_reply_context.get("sender_name") or ""),
+            "rocketchat_reply_message_text": str(direct_reply_context.get("text") or ""),
             "rocketchat_room_source_id": room_id,
             "rocketchat_room_name": room_name,
             "rocketchat_room_slug": room_slug,
@@ -160,6 +160,7 @@ class InboundTranslator:
 
         if room_type != "d":
             event["group_id"] = context_mapping.surrogate_id if context_mapping else room_mapping.surrogate_id
+            event["group_name"] = room_name
 
         if quote_contexts:
             logger.info(
@@ -195,9 +196,14 @@ class InboundTranslator:
                 "sender_source_id": sender_source_id,
                 "sender_surrogate_id": sender_mapping.surrogate_id,
                 "sender_name": sender_name,
+                "sender_username": str(sender.get("username") or ""),
+                "mention_metadata": mention_metadata,
+                "input_text": current_input_text,
                 "text": message_text,
                 "quote_contexts": quote_contexts,
                 "quote_context_text": quote_context_block,
+                "reply_sender_name": str(direct_reply_context.get("sender_name") or ""),
+                "reply_message_text": str(direct_reply_context.get("text") or ""),
                 "timestamp": timestamp,
                 "onebot_message": event,
                 "thread_source_id": raw_msg.get("tmid") or "",
@@ -234,27 +240,76 @@ class InboundTranslator:
 
     async def _build_mention_segments(self, raw_msg: dict, text: str) -> tuple[list[dict], str]:
         mentions = raw_msg.get("mentions")
-        if not isinstance(mentions, list):
-            return [], text
-        cleaned = text
+        if not isinstance(mentions, list) or not mentions:
+            stripped = text.strip()
+            return self._build_text_segments(stripped), stripped
+
         segments: list[dict] = []
+        text_parts: list[str] = []
+        unmatched_segments: list[dict] = []
+        cursor = 0
+
         for mention in mentions:
             if not isinstance(mention, dict):
                 continue
             mention_id = mention.get("_id")
             if not mention_id:
                 continue
+
+            mention_segment = await self._build_mention_segment(mention)
+            if mention_segment is None:
+                continue
+
             username = mention.get("username")
-            if username:
-                cleaned = cleaned.replace(f"@{username}", "", 1)
-            name = mention.get("name") or username or str(mention_id)
-            if str(mention_id) == str(self._rocketchat.user_id):
-                mention_qq = str(self._self_id)
-            else:
-                mapping = await self._id_map.get_or_create("user", str(mention_id))
-                mention_qq = str(mapping.surrogate_id)
-            segments.append({"type": "at", "data": {"qq": mention_qq, "name": name}})
-        return segments, cleaned
+            token = f"@{username}" if username else ""
+            if not token:
+                unmatched_segments.append(mention_segment)
+                continue
+
+            position = text.find(token, cursor)
+            if position < 0:
+                unmatched_segments.append(mention_segment)
+                continue
+
+            if position > cursor:
+                chunk = text[cursor:position]
+                text_parts.append(chunk)
+                self._append_text_segment(segments, chunk)
+
+            segments.append(mention_segment)
+            cursor = position + len(token)
+
+        if cursor < len(text):
+            chunk = text[cursor:]
+            text_parts.append(chunk)
+            self._append_text_segment(segments, chunk)
+
+        segments.extend(unmatched_segments)
+        return segments, "".join(text_parts).strip()
+
+    async def _build_mention_segment(self, mention: dict[str, Any]) -> dict[str, Any] | None:
+        mention_id = mention.get("_id")
+        if not mention_id:
+            return None
+
+        username = mention.get("username")
+        name = mention.get("name") or username or str(mention_id)
+        if str(mention_id) == str(self._rocketchat.user_id):
+            mention_qq = str(self._self_id)
+        else:
+            mapping = await self._id_map.get_or_create("user", str(mention_id))
+            mention_qq = str(mapping.surrogate_id)
+        return {"type": "at", "data": {"qq": mention_qq, "name": name}}
+
+    def _append_text_segment(self, segments: list[dict[str, Any]], text: str) -> None:
+        if not text or not text.strip():
+            return
+        segments.append({"type": "text", "data": {"text": text}})
+
+    def _build_text_segments(self, text: str) -> list[dict[str, Any]]:
+        if not text:
+            return []
+        return [{"type": "text", "data": {"text": text}}]
 
     def _extract_reply_source_id(self, raw_msg: dict) -> tuple[str | None, str]:
         text = str(raw_msg.get("msg") or "")
@@ -566,6 +621,34 @@ class InboundTranslator:
                 result.append(str(name))
         return result
 
+    async def _extract_mention_metadata(self, raw_msg: dict[str, Any]) -> list[dict[str, Any]]:
+        mentions = raw_msg.get("mentions")
+        if not isinstance(mentions, list):
+            return []
+
+        metadata: list[dict[str, Any]] = []
+        for mention in mentions:
+            if not isinstance(mention, dict):
+                continue
+            mention_id = mention.get("_id")
+            if not mention_id:
+                continue
+
+            segment = await self._build_mention_segment(mention)
+            if segment is None:
+                continue
+
+            data = segment.get("data") or {}
+            metadata.append(
+                {
+                    "source_id": str(mention_id),
+                    "username": str(mention.get("username") or ""),
+                    "name": str(mention.get("name") or data.get("name") or mention_id),
+                    "qq": str(data.get("qq") or ""),
+                }
+            )
+        return metadata
+
     def _format_quote_context_block(self, quote_contexts: list[dict[str, Any]]) -> str:
         if not quote_contexts:
             return ""
@@ -710,34 +793,13 @@ class InboundTranslator:
                 parts.append(f"[文件:{name}]")
         return " ".join(parts)
 
-    def _format_current_message_block(
-        self,
-        message_text: str,
-        *,
-        current_message_line: str,
-        has_quote_context: bool,
-        has_media: bool,
-    ) -> str:
-        if current_message_line:
-            return current_message_line
-        if not has_quote_context and message_text:
-            return message_text
-        if has_media:
-            return "(无纯文本，当前消息包含媒体或仅引用上文)"
-        return "(无纯文本，仅引用上文)"
-
     def _compose_raw_message(
         self,
-        quote_context_block: str,
-        current_message_block: str,
         *,
-        current_message_line: str,
+        current_message_text: str,
         fallback: str,
     ) -> str:
-        parts = [part for part in (current_message_line or current_message_block, quote_context_block) if part]
-        if parts:
-            return "\n".join(parts)
-        return fallback
+        return current_message_text or fallback
 
     def _build_group_context_source_id(self, room_type: str) -> str:
         if room_type == "d":

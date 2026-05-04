@@ -41,11 +41,16 @@ class BridgeRuntime:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.reaction_config = reaction_config or BridgeReactionConfig.from_mapping(raw_config)
         self._disable_callback = disable_callback
+        self.message_index_max_entries = DurableIdMap._DEFAULT_MESSAGE_WINDOW_SIZE
 
         self.config = BridgeConfig.from_mapping(raw_config)
         self.state_store = JsonStore(self.data_dir / "runtime_state.json")
-        self.id_map = DurableIdMap(JsonStore(self.data_dir / "id_map.json"))
         self.message_store = MessageStore(JsonStore(self.data_dir / "message_registry.json"))
+        self.id_map = DurableIdMap(
+            JsonStore(self.data_dir / "id_map.json"),
+            message_window_size=self.message_index_max_entries,
+            on_message_window_changed=self.message_store.rebuild_for_active_mappings,
+        )
         self.private_room_store = PrivateRoomStore(JsonStore(self.data_dir / "private_rooms.json"))
         self.context_room_store = ContextRoomStore(JsonStore(self.data_dir / "context_room_registry.json"))
         self.rocketchat: RocketChatClient | None = None

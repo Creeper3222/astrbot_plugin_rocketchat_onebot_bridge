@@ -13,7 +13,7 @@ from .bridge.manager import BridgeManager
     "rocketchat_onebot_bridge",
     "Creeper3222",
     "将 Rocket.Chat 通过内嵌 OneBot v11 bridge 的类napcat方式接入 AstrBot。",
-    "v0.1.0",
+    "v0.1.1",
 )
 class RocketCatPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig | dict[str, Any]):

@@ -93,7 +93,7 @@ class IndependentWebUIServer:
         self._bound_socket: socket.socket | None = None
         self._log_buffer = BridgeLogBuffer(max_entries=5000)
         self._log_handler = BridgeLogHandler(self._log_buffer)
-        self._app = FastAPI(title="RocketCat Shell", version="0.1.0")
+        self._app = FastAPI(title="RocketCat Shell", version="0.1.1")
         self._static_dir = Path(__file__).resolve().parent / "static"
         self._login_file = self._static_dir / "login.html"
         self._setup_routes()
