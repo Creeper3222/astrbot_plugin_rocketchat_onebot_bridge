@@ -11,6 +11,7 @@ from .storage import ContextRoomStore, MessageStore, PrivateRoomStore
 class OutboundMessageTranslator:
     _TEXT_MENTION_PATTERN = re.compile(r"(?<!\S)@([A-Za-z0-9._-]+)")
     _RECENT_SELF_CONTEXT_ROOM_TTL_SECONDS = 120
+    _RECENT_SELF_CONTEXT_THREAD_TTL_SECONDS = 120
 
     def __init__(
         self,
@@ -76,12 +77,17 @@ class OutboundMessageTranslator:
             user_id=user_id,
             reply_source_id=reply_source_id,
         )
+        thread_source_id = await self._resolve_thread_source_id(
+            group_id=group_id,
+            reply_source_id=reply_source_id,
+        )
 
         if group_id is not None:
-            await self._refresh_context_room_binding(group_id, room_id)
+            await self._refresh_context_room_binding(group_id, room_id, thread_source_id=thread_source_id)
 
         return {
             "room_id": room_id,
+            "thread_source_id": thread_source_id,
             "segments": normalized_segments,
             "reply_source_id": reply_source_id,
             "reply_mention_username": await self._resolve_reply_mention_username(reply_source_id)
@@ -144,6 +150,38 @@ class OutboundMessageTranslator:
                 return str(context_entry["room_source_id"])
         return None
 
+    async def _resolve_thread_source_id(
+        self,
+        *,
+        group_id: int | str | None,
+        reply_source_id: str | None,
+    ) -> str | None:
+        if group_id is None:
+            return None
+
+        context_entry = await self._context_rooms.get_by_context_surrogate(group_id)
+        context_thread_source_id = ""
+        if isinstance(context_entry, dict):
+            context_thread_source_id = str(context_entry.get("thread_source_id") or "").strip()
+
+        if reply_source_id:
+            entry = await self._messages.get_by_source(reply_source_id)
+            if isinstance(entry, dict):
+                reply_thread_source_id = str(entry.get("thread_source_id") or "").strip()
+                if reply_thread_source_id:
+                    return reply_thread_source_id
+            if context_thread_source_id and context_thread_source_id == str(reply_source_id):
+                return context_thread_source_id
+            return None
+
+        if isinstance(context_entry, dict):
+            if "thread_source_id" in context_entry:
+                return context_thread_source_id or None
+            recent_self_thread_source_id = await self._resolve_recent_self_context_thread(context_entry)
+            if recent_self_thread_source_id:
+                return recent_self_thread_source_id
+        return None
+
     async def _resolve_recent_self_context_room(self, context_entry: dict[str, Any]) -> str | None:
         context_source_id = str(context_entry.get("context_source_id") or "").strip()
         sender_source_id = str(self._rocketchat.user_id or "").strip()
@@ -156,7 +194,25 @@ class OutboundMessageTranslator:
             max_age_seconds=self._RECENT_SELF_CONTEXT_ROOM_TTL_SECONDS,
         )
 
-    async def _refresh_context_room_binding(self, group_id: int | str, room_id: str) -> None:
+    async def _resolve_recent_self_context_thread(self, context_entry: dict[str, Any]) -> str | None:
+        context_source_id = str(context_entry.get("context_source_id") or "").strip()
+        sender_source_id = str(self._rocketchat.user_id or "").strip()
+        if not context_source_id or not sender_source_id:
+            return None
+
+        return await self._messages.get_latest_thread_by_context_sender(
+            context_source_id,
+            sender_source_id,
+            max_age_seconds=self._RECENT_SELF_CONTEXT_THREAD_TTL_SECONDS,
+        )
+
+    async def _refresh_context_room_binding(
+        self,
+        group_id: int | str,
+        room_id: str,
+        *,
+        thread_source_id: str | None = None,
+    ) -> None:
         context_entry = await self._context_rooms.get_by_context_surrogate(group_id)
         if not isinstance(context_entry, dict):
             return
@@ -178,6 +234,7 @@ class OutboundMessageTranslator:
             room_surrogate_id=room_mapping.surrogate_id,
             room_name=room_name,
             room_slug=room_slug,
+            thread_source_id=str(thread_source_id or "").strip(),
         )
 
     def _normalize_segments(self, message: Any) -> list[dict[str, Any]]:

@@ -53,6 +53,7 @@ class MessageStore:
         context_source_id = str(entry.get("context_source_id") or "").strip()
         sender_source_id = str(entry.get("sender_source_id") or "").strip()
         room_source_id = str(entry.get("room_source_id") or "").strip()
+        thread_source_id = str(entry.get("thread_source_id") or "").strip()
         timestamp = int(entry.get("timestamp") or 0)
 
         def mutate(payload: dict[str, Any]) -> None:
@@ -69,6 +70,7 @@ class MessageStore:
                     context_bucket[sender_source_id] = {
                         "source_id": source_id,
                         "room_source_id": room_source_id,
+                        "thread_source_id": thread_source_id,
                         "timestamp": timestamp,
                     }
             return None
@@ -139,6 +141,33 @@ class MessageStore:
 
         return room_source_id
 
+    async def get_latest_thread_by_context_sender(
+        self,
+        context_source_id: str,
+        sender_source_id: str,
+        *,
+        max_age_seconds: int | float | None = None,
+    ) -> str | None:
+        payload = await self._store.read(self.empty_payload())
+        context_bucket = payload.get("latest_by_context_sender", {}).get(str(context_source_id), {})
+        if not isinstance(context_bucket, dict):
+            return None
+
+        entry = context_bucket.get(str(sender_source_id))
+        if not isinstance(entry, dict):
+            return None
+
+        thread_source_id = str(entry.get("thread_source_id") or "").strip()
+        if not thread_source_id:
+            return None
+
+        if max_age_seconds is not None:
+            timestamp = int(entry.get("timestamp") or 0)
+            if timestamp > 0 and (time.time() - timestamp) > float(max_age_seconds):
+                return None
+
+        return thread_source_id
+
     @staticmethod
     def _rewrite_entry_surrogate(
         entry: dict[str, Any],
@@ -189,6 +218,7 @@ class MessageStore:
                 context_bucket[sender_source_id] = {
                     "source_id": source_id,
                     "room_source_id": room_source_id,
+                    "thread_source_id": str(entry.get("thread_source_id") or "").strip(),
                     "timestamp": timestamp,
                 }
 
@@ -236,6 +266,8 @@ class ContextRoomStore:
         room_surrogate_id: int | str,
         room_name: str,
         room_slug: str,
+        thread_source_id: str = "",
+        timestamp: int | None = None,
     ) -> None:
         entry = {
             "context_source_id": str(context_source_id),
@@ -244,9 +276,18 @@ class ContextRoomStore:
             "room_surrogate_id": int(room_surrogate_id),
             "room_name": str(room_name),
             "room_slug": str(room_slug),
+            "thread_source_id": str(thread_source_id or "").strip(),
         }
+        if timestamp is not None:
+            entry["timestamp"] = int(timestamp)
 
         def mutate(payload: dict[str, Any]) -> None:
+            existing = payload.setdefault("by_context_source", {}).get(str(context_source_id))
+            if timestamp is not None and isinstance(existing, dict):
+                existing_timestamp = int(existing.get("timestamp") or 0)
+                if existing_timestamp > int(timestamp):
+                    return None
+
             payload.setdefault("by_context_source", {})[str(context_source_id)] = entry
             payload.setdefault("by_context_surrogate", {})[str(context_surrogate_id)] = entry
             return None

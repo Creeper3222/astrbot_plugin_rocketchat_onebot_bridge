@@ -47,27 +47,31 @@ class InboundTranslator:
         room_mapping = await self._id_map.get_or_create("room", room_id)
         sender_mapping = await self._id_map.get_or_create("user", sender_source_id)
         message_mapping = await self._id_map.get_or_create("message", source_message_id)
-        context_source_id = self._build_group_context_source_id(room_type)
-        context_mapping = (
-            await self._id_map.get_or_create("context", context_source_id)
-            if context_source_id
-            else None
+        context_source_id = self._build_group_context_source_id(room_type, room_id)
+        context_surrogate_id = await self._resolve_context_surrogate_id(
+            room_type=room_type,
+            room_mapping=room_mapping,
+            context_source_id=context_source_id,
         )
         room_name = self._resolve_room_display_name(room_info, room_id)
         room_slug = self._resolve_room_slug(room_info, room_id)
         room_context_label = self._format_room_context_label(room_type, room_name)
         sender_name = sender.get("name") or sender.get("username") or sender_source_id
+        thread_source_id = str(raw_msg.get("tmid") or "").strip()
+        timestamp = self._extract_timestamp(raw_msg)
 
         if room_type == "d":
             await self._private_rooms.bind(sender_source_id, sender_mapping.surrogate_id, room_id)
-        elif context_mapping is not None:
+        elif context_surrogate_id is not None:
             await self._context_rooms.bind(
                 context_source_id=context_source_id,
-                context_surrogate_id=context_mapping.surrogate_id,
+                context_surrogate_id=context_surrogate_id,
                 room_source_id=room_id,
                 room_surrogate_id=room_mapping.surrogate_id,
                 room_name=room_name,
                 room_slug=room_slug,
+                thread_source_id=thread_source_id,
+                timestamp=timestamp,
             )
 
         reply_source_id, cleaned_text = self._extract_reply_source_id(raw_msg)
@@ -155,11 +159,12 @@ class InboundTranslator:
             "rocketchat_room_label": room_context_label,
             "rocketchat_room_surrogate_id": room_mapping.surrogate_id,
             "rocketchat_context_source_id": context_source_id,
-            "rocketchat_context_group_id": context_mapping.surrogate_id if context_mapping else None,
+            "rocketchat_context_group_id": context_surrogate_id,
+            "rocketchat_thread_source_id": thread_source_id,
         }
 
         if room_type != "d":
-            event["group_id"] = context_mapping.surrogate_id if context_mapping else room_mapping.surrogate_id
+            event["group_id"] = context_surrogate_id if context_surrogate_id is not None else room_mapping.surrogate_id
             event["group_name"] = room_name
 
         if quote_contexts:
@@ -192,7 +197,7 @@ class InboundTranslator:
                 "room_name": room_name,
                 "room_slug": room_slug,
                 "context_source_id": context_source_id,
-                "context_surrogate_id": context_mapping.surrogate_id if context_mapping else None,
+                "context_surrogate_id": context_surrogate_id,
                 "sender_source_id": sender_source_id,
                 "sender_surrogate_id": sender_mapping.surrogate_id,
                 "sender_name": sender_name,
@@ -206,7 +211,7 @@ class InboundTranslator:
                 "reply_message_text": str(direct_reply_context.get("text") or ""),
                 "timestamp": timestamp,
                 "onebot_message": event,
-                "thread_source_id": raw_msg.get("tmid") or "",
+                "thread_source_id": thread_source_id,
             }
         )
         return event
@@ -346,9 +351,6 @@ class InboundTranslator:
             candidate = self._extract_message_id_from_url(match.group(1) or match.group(2) or "")
             if candidate:
                 return candidate, self._QUOTE_PATTERN.sub("", text).strip()
-
-        if raw_msg.get("tmid"):
-            return str(raw_msg["tmid"]), text
 
         return None, text
 
@@ -801,12 +803,26 @@ class InboundTranslator:
     ) -> str:
         return current_message_text or fallback
 
-    def _build_group_context_source_id(self, room_type: str) -> str:
+    async def _resolve_context_surrogate_id(
+        self,
+        *,
+        room_type: str,
+        room_mapping: Any,
+        context_source_id: str,
+    ) -> int | None:
+        if room_type == "d" or not context_source_id:
+            return None
+        if getattr(self._rocketchat.config, "enable_subchannel_session_isolation", False):
+            return int(room_mapping.surrogate_id)
+        context_mapping = await self._id_map.get_or_create("context", context_source_id)
+        return None if context_mapping is None else int(context_mapping.surrogate_id)
+
+    def _build_group_context_source_id(self, room_type: str, room_id: str) -> str:
         if room_type == "d":
             return ""
-        if getattr(self._rocketchat.config, "enable_subchannel_session_isolation", False):
-            return ""
         server_url = str(getattr(self._rocketchat.config, "server_url", "") or "").rstrip("/")
+        if getattr(self._rocketchat.config, "enable_subchannel_session_isolation", False):
+            return f"rocketchat-room-context::{server_url or 'default'}::{room_id}"
         return f"rocketchat-group-context::{server_url or 'default'}"
 
     def _resolve_room_display_name(self, room_info: dict[str, Any], room_id: str) -> str:

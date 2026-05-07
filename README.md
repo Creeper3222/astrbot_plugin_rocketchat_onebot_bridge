@@ -15,6 +15,14 @@
 
 ---
 
+## v0.1.2 更新
+
+- 插件版 bridge 已同步 RocketCatShell v0.1.2 的线程回复修复：`tmid` 会作为独立线程上下文持久化与传递，文本、图片、文件、语音、视频回复都会优先回到当前线程。
+- 修复了线程语义与普通 `reply` 语义混淆，以及 Rocket.Chat 发送回包缺失 `tmid` 时的线程丢失问题；加密房间里的分段文本、图片、文件回复会优先通过自回显消息修正线程，必要时回填已知线程 ID。
+- 在开启“子频道会话隔离”时，插件版也会按 room 维度维护线程上下文，并通过时间戳阻止旧消息重放覆盖较新的线程绑定。
+
+---
+
 ## 架构说明
 
 ```text
@@ -52,12 +60,13 @@ AstrBot Core
 - 支持动态订阅新房间，机器人被拉入新房间后无需重启。
 - 支持 OneBot 风格的群聊、私聊、消息查询、群成员查询、登录信息查询。
 - 支持文本、`at`、引用回复、图片、文件、语音、视频、Markdown 出站发送。
+- 支持 Rocket.Chat 线程上下文感知出站：同一子频道内的线程文本、图片、文件、语音、视频回复会优先跟随当前线程，而不是错误串到最近一次活跃的其他线程。
 - 支持引用链提取、回复来源识别、提及用户映射、群聊/私聊上下文映射。
 - 支持远端媒体下载、大小限制控制、本地临时文件落地和 Base64 媒体上传。
 - 支持 Rocket.Chat 官方 E2EE 私聊/私有群组文本与媒体收发。
 - 支持 `astrbot_plugin_iamthinking` 的数字表情反应映射，可配置思考中/完成后的 Rocket.Chat reaction shortcode。
 - 使用 `plugin_data` 持久化保存消息映射、上下文房间映射、副 bot 配置和运行状态。
-- 入站标准消息语义已对齐 RocketCatShell v0.1.1 的关键修正，OneBot 标准 `message` / `raw_message` 尽量只保留当前用户输入正文。
+- 入站标准消息语义与线程回复路由已对齐 RocketCatShell v0.1.2 的关键修正，OneBot 标准 `message` / `raw_message` 尽量只保留当前用户输入正文，同时保留独立线程上下文元数据。
 - Rocket.Chat 的房间、发送者、引用链和解释性上下文拆分进 `rocketchat_*` 附加字段，而不是硬拼进首段标准文本。
 - 消息 surrogate `message_id` 使用固定 1000 条活动窗口治理，窗口裁剪或 compact 时会同步重建消息缓存，避免索引与注册表失配。
 
@@ -65,7 +74,7 @@ AstrBot Core
 
 ## 当前版本行为要点
 
-- 插件版当前入站行为已经按 RocketCatShell v0.1.1 的核心逻辑完成同步，重点修正了“房间/发送者信息硬拼进首段文本”这一层旧设计。
+- 插件版当前 bridge 核心已经按 RocketCatShell v0.1.2 完成同步，除了延续 v0.1.1 的标准消息语义修正外，也补齐了线程回复、线程媒体回复和旧消息重放保护。
 - 标准 OneBot `message` / `raw_message` 现在优先表达当前这条消息本身的正文；引用链、reply source、房间标签、发送者标签等解释性信息通过 `rocketchat_*` 字段附加。
 - Rocket.Chat 原生 `source_id` 仍然是长期稳定身份；OneBot 侧的数字 `message_id` 只是本地窗口内工作的 surrogate id，不承诺永久稳定。
 - 插件版固定将消息双向索引窗口收口到 1000 条，不提供单独的用户配置项。
@@ -105,7 +114,7 @@ AstrBot Core
 - 私聊会映射为 OneBot `private` 消息。
 - 频道和私有群组会映射为 OneBot `group` 消息。
 - Rocket.Chat `mentions` 会转换为 OneBot `at` 段。
-- Rocket.Chat 引用、消息链接、线程回复会转换为 OneBot `reply` 语义；引用链与解释性上下文通过 `rocketchat_quote_contexts`、`rocketchat_quote_context_text`、`rocketchat_reply_source_id` 等字段附加，而不是回写到首段标准正文。
+- Rocket.Chat 引用和消息链接会转换为 OneBot `reply` 语义；线程消息本身不会再被误折叠成普通 `reply`，而是通过 `rocketchat_thread_source_id` / `thread_source_id` 独立保留，引用链与解释性上下文仍通过附加字段写出，而不是回写到首段标准正文。
 - Rocket.Chat 的房间、发送者、当前消息解释行等认知信息可从 `rocketchat_room_*`、`rocketchat_sender_*`、`rocketchat_current_message_*` 字段中读取。
 - 图片、普通文件、音频、视频附件会被识别并转换成对应的 OneBot 媒体段。
 - 不支持直接桥接的媒体会降级为可读文本占位，避免整条消息消失。
@@ -115,6 +124,7 @@ AstrBot Core
 - OneBot `text` 直接发送为 Rocket.Chat 文本。
 - OneBot `at` 会转换为 Rocket.Chat `@username` 或 `@all`。
 - OneBot `reply` 会转换为 Rocket.Chat 消息链接引用格式。
+- 当当前会话上下文处于 Rocket.Chat 线程内时，文本和媒体出站会自动带上对应 `tmid`；如果发送回包暂时缺失 `tmid`，桥接器会优先用自回显消息修正，必要时回填已知线程 ID。
 - OneBot `image` 支持 HTTP(S) 链接、本地文件和 Base64 数据。
 - OneBot `file`、`record`、`video` 支持本地文件；远端媒体会先尝试下载再上传。
 - OneBot `markdown` 会按文本内容发往 Rocket.Chat。
@@ -125,6 +135,7 @@ AstrBot Core
 - 其中消息 surrogate `message_id` 采用固定 1000 条活动窗口治理；旧消息超出窗口后会被裁剪，达到重排阈值时会 compact 回较小编号区间。
 - `id_map.json` 与 `message_registry.json` 会在消息窗口变化时同步重建，reply 段里引用到的 surrogate id 也会随之改写，避免索引和缓存各走各的。
 - 群聊上下文使用 `context_room_registry.json` 维持群上下文到真实房间的绑定关系。
+- 在开启“子频道会话隔离”时，群聊上下文会按 room 维度保留线程路由信息，并通过时间戳拒绝旧消息重放覆盖较新的线程绑定。
 - 私聊上下文使用 `PrivateRoomStore` 维护用户与私聊房间的绑定关系。
 - 可选开启“子频道会话隔离”，把不同子房间拆成不同会话上下文。
 
@@ -188,7 +199,7 @@ AstrBot Core
 说明：
 
 - 插件目录内的 `requirements.txt` 当前只包含桥接器自身需要的 4 个第三方依赖：`aiohttp`、`cryptography`、`fastapi`、`uvicorn`。
-- 本轮入站语义与消息索引窗口同步没有新增任何新的第三方依赖。
+- 本轮 v0.1.2 线程回复 / 线程媒体回复修复同样没有新增任何新的第三方依赖。
 - AstrBot 本体依赖仍由 AstrBot 根目录的 `requirements.txt` / `pyproject.toml` 管理，插件 `requirements.txt` 只覆盖插件自己的额外依赖面。
 
 ---

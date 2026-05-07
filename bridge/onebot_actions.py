@@ -97,6 +97,7 @@ class OneBotActionHandler:
     async def _send_outbound(self, outbound: dict[str, Any]) -> dict[str, Any]:
         segments = outbound.get("segments") or []
         reply_source_id = outbound.get("reply_source_id")
+        thread_source_id = str(outbound.get("thread_source_id") or "").strip() or None
         room_id = str(outbound["room_id"])
         if not segments and not reply_source_id:
             raise ValueError("当前消息为空，无法发送")
@@ -104,6 +105,7 @@ class OneBotActionHandler:
         raw_messages = await self._rocketchat.send_message_segments(
             room_id,
             segments,
+            thread_source_id=thread_source_id,
             reply_source_id=reply_source_id,
             mention_usernames=outbound.get("mention_usernames") or [],
             reply_mention_username=outbound.get("reply_mention_username") or None,
@@ -113,6 +115,14 @@ class OneBotActionHandler:
 
         last_message_id: int | None = None
         for raw_message in raw_messages:
+            if self._should_prefer_echo_for_thread(raw_message, requested_thread_source_id=thread_source_id):
+                echoed_raw_message = await self._rocketchat.await_sent_message_echo(room_id)
+                if echoed_raw_message:
+                    raw_message = echoed_raw_message
+                elif isinstance(raw_message, dict):
+                    raw_message = dict(raw_message)
+                    raw_message["tmid"] = thread_source_id
+
             event = await self._inbound.translate(raw_message)
             if event is not None:
                 last_message_id = int(event["message_id"])
@@ -140,6 +150,18 @@ class OneBotActionHandler:
         if last_message_id is None:
             raise RuntimeError("未能为已发送消息建立映射")
         return _ok({"message_id": last_message_id})
+
+    def _should_prefer_echo_for_thread(
+        self,
+        raw_message: Any,
+        *,
+        requested_thread_source_id: str | None,
+    ) -> bool:
+        if not requested_thread_source_id or not isinstance(raw_message, dict):
+            return False
+        if str(raw_message.get("tmid") or "").strip():
+            return False
+        return True
 
     async def _handle_get_msg(self, params: dict[str, Any]) -> dict[str, Any]:
         event = await self._inbound.hydrate(params.get("message_id"))

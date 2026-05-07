@@ -686,12 +686,14 @@ class RocketChatClient:
         room_id: str,
         segments: list[dict[str, Any]],
         *,
+        thread_source_id: str | None = None,
         reply_source_id: str | None = None,
         mention_usernames: list[str] | None = None,
         reply_mention_username: str | None = None,
     ) -> list[dict[str, Any]]:
         sent_messages: list[dict[str, Any]] = []
         text_parts: list[str] = []
+        current_thread_source_id = str(thread_source_id or "").strip() or None
         quote_pending = reply_source_id
         pending_mentions = list(mention_usernames or [])
         pending_reply_mention = str(reply_mention_username or "").strip() or None
@@ -708,6 +710,7 @@ class RocketChatClient:
                     room_id,
                     text,
                     str(quote_pending),
+                    tmid=current_thread_source_id,
                     mention_usernames=pending_mentions,
                     reply_mention_username=pending_reply_mention,
                 )
@@ -716,6 +719,7 @@ class RocketChatClient:
                 raw_message = await self.send_text(
                     room_id,
                     text,
+                    tmid=current_thread_source_id,
                     mention_usernames=pending_mentions,
                     reply_mention_username=pending_reply_mention,
                 )
@@ -739,7 +743,12 @@ class RocketChatClient:
             elif quote_pending:
                 await flush_text(force_quote=True)
 
-            raw_message = await self._send_media_segment(room_id, segment_type, data)
+            raw_message = await self._send_media_segment(
+                room_id,
+                segment_type,
+                data,
+                tmid=current_thread_source_id,
+            )
             if raw_message:
                 sent_messages.append(raw_message)
 
@@ -751,6 +760,8 @@ class RocketChatClient:
         room_id: str,
         segment_type: str,
         data: dict[str, Any],
+        *,
+        tmid: str | None = None,
     ) -> dict[str, Any] | None:
         file_ref = str(data.get("file") or data.get("url") or "")
         if not file_ref:
@@ -758,12 +769,12 @@ class RocketChatClient:
 
         if segment_type == "image":
             if file_ref.startswith(("http://", "https://")):
-                return await self.send_image_url(room_id, file_ref)
+                return await self.send_image_url(room_id, file_ref, tmid=tmid)
             local_path, cleanup = await self._resolve_uploadable_path(file_ref, ".png")
             if not local_path:
                 return None
             try:
-                return await self.send_image_file(room_id, local_path)
+                return await self.send_image_file(room_id, local_path, tmid=tmid)
             finally:
                 if cleanup:
                     cleanup()
@@ -788,6 +799,7 @@ class RocketChatClient:
                         "video": "视频",
                         "file": "文件",
                     }.get(segment_type, "媒体"),
+                    tmid=tmid,
                 )
             return None
 
@@ -800,6 +812,7 @@ class RocketChatClient:
                     local_path,
                     str(data.get("file_name") or data.get("name") or default_name),
                 ),
+                tmid=tmid,
             )
         finally:
             if cleanup:
